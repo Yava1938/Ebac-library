@@ -30,7 +30,7 @@ Permite administrar **usuarios**, **autores** y **libros**, además de realizar 
 
 1. **Clona el repositorio**
    ```bash
-   git clone https://github.com/<tu-usuario>/EbacLibrary.git
+   git clone https://github.com/Yava1938/Ebac-library.git
    cd EbacLibrary
    
 ## Comandos de compilacion y ejecución
