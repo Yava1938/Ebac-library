@@ -1,3 +1,9 @@
+# 📚 Biblioteca EBAC 2.0
+Se potencializa la version de la aplicacion integrando patrones de diseño,
+persistencia de la informacion y validacion con pruebas automatizadas utilizando JUnit5
+
+## Insumos necesarios para la ejecucion
+Se integra en la seccion de resources el script base de la DB para realizar pruebas y jugar con la aplicacion.
 # 📚 Biblioteca EBAC
 
 Aplicación de consola en **Java 21** para gestionar una biblioteca digital, desarrollada como proyecto académico para **EBAC**.  

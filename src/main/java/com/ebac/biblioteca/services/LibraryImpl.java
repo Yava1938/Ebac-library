@@ -1,102 +1,175 @@
 package com.ebac.biblioteca.services;
 
-import com.ebac.biblioteca.exceptions.BookNotAvailableException;
-import com.ebac.biblioteca.exceptions.DuplicateUserException;
-import com.ebac.biblioteca.exceptions.UserNotFoundException;
-import com.ebac.biblioteca.modelos.Book;
-import com.ebac.biblioteca.modelos.User;
+import com.ebac.biblioteca.dao.interfaces.AutorDAO;
+import com.ebac.biblioteca.dao.interfaces.BookDAO;
+import com.ebac.biblioteca.dao.interfaces.UserDAO;
+import com.ebac.biblioteca.dto.Autor;
 
+import com.ebac.biblioteca.dto.Book;
+import com.ebac.biblioteca.dto.User;
+
+import java.sql.SQLException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+
 
 public class LibraryImpl implements Library{
-    private final Map<String, Book> booksByIsbn = new ConcurrentHashMap<>();
-    private final Map<String, User> userByEmail = new ConcurrentHashMap<>();
+    private final BookDAO bookDAO;
+    private final AutorDAO autorDAO;
+    private final UserDAO userDAO;
+
+    public LibraryImpl(BookDAO bookDAO, AutorDAO autorDAO, UserDAO userDAO) {
+        this.bookDAO = bookDAO;
+        this.autorDAO = autorDAO;
+        this.userDAO = userDAO;
+    }
+
 
     @Override
-    public void addBook(Book book) {
-        booksByIsbn.putIfAbsent(book.getISBN(), book);
+    public Book addBook(Book book) throws SQLException {
+        return bookDAO.save(book);
     }
 
     @Override
-    public Optional<Book> getBookByISBN(String isbn) {
-        return Optional.ofNullable(booksByIsbn.get(isbn));
+    public Optional<Book> getBookById(int id) throws SQLException {
+        return bookDAO.findById(id);
     }
 
     @Override
-    public List<Book> searchBookByTitle(String title) {
-        return booksByIsbn.values().stream()
-                .filter(book -> book.getTitle().toLowerCase().contains(title.toLowerCase()))
-                .sorted(Comparator.comparing(Book::getTitle))
-                .collect(Collectors.toList());
+    public List<Book> searchBooks() throws SQLException {
+        return bookDAO.findAll();
     }
 
     @Override
-    public void addUser(User user) {
-        if (userByEmail.putIfAbsent(user.getEmail(), user) != null){
-            throw new DuplicateUserException("Usuario ya existe: " + user.getEmail());
-        }
-    }
-
-    @Override
-    public Optional<User> getUserByEmail(String email) {
-        return Optional.ofNullable(userByEmail.get(email));
-    }
-
-    @Override
-    public void lendBook(String isbn, String email) {
-        Book book = booksByIsbn.get(isbn);
-        User user =  userByEmail.get(email);
-        if (user == null) throw new UserNotFoundException(email);
-        if (book == null) throw new RuntimeException("Libro no encontrado: " + isbn);
-        if (!book.isAvailabe()) throw new BookNotAvailableException(isbn + " No disponible");
-        book.setAvailabe(false);
-        user.addBorrowedBook(book);
-    }
-
-    @Override
-    public void returnBook(String isbn, String email) {
-        Book book = booksByIsbn.get(isbn);
-        User user =  userByEmail.get(email);
-        if (user == null) throw new UserNotFoundException(email);
-        if (book == null) throw new RuntimeException("Libro no encontrado: " + isbn);
-        if (user.getBorrowedBooks().contains(book)){
-            user.removeBorrowedBook(book);
-            book.setAvailabe(true);
+    public void updateBook(Book book) throws SQLException {
+        if (bookDAO.update(book)){
+            System.out.println("Libro actualizado correctamente");
         }else{
-            throw new RuntimeException("Usuario no cuenta con: " + isbn + " como prestado");
+            System.out.println("No se logro actualizar el libro");
         }
     }
 
-    public List<Book> searchBooks(String title, String authorName, Integer yearMin, Integer yearMax){
-        return  booksByIsbn.values().stream()
-                .filter(book -> title == null || book.getTitle().toLowerCase().contains(title.toLowerCase()))
-                .filter( book -> authorName == null || book.getAuthor().getFullName().toLowerCase().contains(authorName.toLowerCase()))
-                .filter(book -> yearMin == null || book.getYear() >= yearMin)
-                .filter(book -> yearMax == null || book.getYear() <= yearMax)
-                .sorted(Comparator.comparing(Book::getYear))
-                .collect(Collectors.toList());
+    @Override
+    public void deleteBook(int id) throws SQLException {
+        if(bookDAO.delete(id)){
+            System.out.println("Libro eliminado correctamente");
+        }else{
+            System.out.println("No se pudo eliminar el libro" );
+        }
     }
 
-    public Map<String, List<Book>> searchBooksByAuthor(){
-        return booksByIsbn.values().stream()
-                .collect(Collectors.groupingBy(book -> book.getAuthor().getFullName()));
+    @Override
+    public void lendBook(int id_libro, int id_usuario) throws SQLException {
+        Optional<Book> bq_libro = bookDAO.findById(id_libro);
+        if (bq_libro.isEmpty()){
+            throw new SQLException("El libro: " + id_libro + " no existe");
+        }
+        Book book = bq_libro.get();
+        if (!book.isDisponible()){
+            throw new SQLException("El libro: " + book.getNombre_libro() + " no se encuentra disponible");
+        }
+        Optional<User> usr =  userDAO.findById(id_usuario);
+        if (usr.isEmpty()){
+            throw new SQLException("Usuario: " + id_usuario + " no existe");
+        }
+        User user = usr.get();
+        book.setDisponible(false);
+        book.setId_usuario(user.getId_usuario());
+        bookDAO.update(book);
+        System.out.println("Libro prestado correctamente");
     }
 
-    public List<String> getBorrowedBooksByUser(String email){
-        return Optional.ofNullable(userByEmail.get(email))
-                .map(User::getBorrowedBooks)
-                .orElse(List.of())
-                .stream()
-                .map(Book::getTitle)
-                .collect(Collectors.toList());
+    @Override
+    public void returnBook(int id_libro, int id_usuario) throws SQLException {
+        Optional<Book> bookPrestado = bookDAO.findById(id_libro);
+        if (bookPrestado.isEmpty()){
+            throw new SQLException("El libro: " + id_libro + " no existe");
+        }
+        Book bookCuestion = bookPrestado.get();
+
+        if (bookCuestion.isDisponible()){
+            throw new SQLException("El libro: " + bookCuestion.getNombre_libro() + " no ha sido prestado");
+        }
+
+        Optional<User> userCliente = userDAO.findById(id_usuario);
+        if (userCliente.isEmpty()){
+            throw new SQLException("No existe el cliente: " + id_usuario);
+        }
+        User userCuestion = userCliente.get();
+        if (bookCuestion.getId_usuario() == null ||
+                !bookCuestion.getId_usuario().equals(userCuestion.getId_usuario())){
+            throw new SQLException("El usuario: " + userCuestion.getNombre_usuario() +
+                    " no tiene prestado el libro: " + bookCuestion.getNombre_libro());
+        }
+
+        bookCuestion.setDisponible(true);
+        bookCuestion.setId_usuario(null);
+        bookDAO.update(bookCuestion);
+        System.out.println("Libro devuelto correctamente");
+
     }
 
-    public List<User> getAllUsers(){
-        return new ArrayList<>(userByEmail.values());
+    @Override
+    public User addUser(User user) throws SQLException {
+        return  userDAO.save(user);
     }
 
+    @Override
+    public Optional<User> getUserById(int id) throws SQLException {
+        ;
+        return userDAO.findById(id);
+    }
 
+    @Override
+    public List<User> searchUsers() throws SQLException {
+        return userDAO.findAll();
+    }
 
+    @Override
+    public void updateUser(User user) throws SQLException {
+        if(userDAO.update(user)){
+            System.out.println("Usuario actualizado exitosamente");
+        }else{
+            System.out.println("No se pudo actualizar el usuario");
+        }
+    }
+
+    @Override
+    public void deleteUser(int id) throws SQLException {
+        if(userDAO.delete(id)){
+            System.out.println("Usuario eliminado exitosamente");
+        }else{
+            System.out.println("No se pudo eliminar al usuario");
+        }
+    }
+
+    @Override
+    public Autor addAutor(Autor autor) throws SQLException {
+        return autorDAO.save(autor);
+    }
+
+    @Override
+    public Optional<Autor> getAutorById(int id) throws SQLException {
+        return  autorDAO.findById(id);
+    }
+
+    @Override
+    public List<Autor> searchAutor() throws SQLException {
+
+        return  autorDAO.findAll();
+    }
+
+    @Override
+    public void updateAutor(Autor autor) throws SQLException {
+        autorDAO.update(autor);
+    }
+
+    @Override
+    public void deleteAutor(int id) throws SQLException {
+        if(autorDAO.deleteById(id)){
+            System.out.println("Autor eliminado exitosamente");
+        }else{
+            System.out.println("No se pudo eliminar al autor");
+        }
+
+    }
 }
