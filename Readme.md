@@ -1,4 +1,4 @@
-# 📚 Biblioteca EBAC 2.0
+# 📚 Biblioteca EBAC 2.0.1
 Se potencializa la version de la aplicacion integrando patrones de diseño,
 persistencia de la informacion y validacion con pruebas automatizadas utilizando JUnit5
 
