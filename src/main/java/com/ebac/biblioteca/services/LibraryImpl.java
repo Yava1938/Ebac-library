@@ -1,175 +1,195 @@
 package com.ebac.biblioteca.services;
 
-import com.ebac.biblioteca.dao.interfaces.AutorDAO;
-import com.ebac.biblioteca.dao.interfaces.BookDAO;
-import com.ebac.biblioteca.dao.interfaces.UserDAO;
-import com.ebac.biblioteca.dto.Autor;
-
+import com.ebac.biblioteca.dto.Author;
 import com.ebac.biblioteca.dto.Book;
 import com.ebac.biblioteca.dto.User;
+import com.ebac.biblioteca.entity.AuthorEntity;
+import com.ebac.biblioteca.entity.BookEntity;
+import com.ebac.biblioteca.entity.LibraryEntity;
+import com.ebac.biblioteca.entity.UserEntity;
+import com.ebac.biblioteca.exceptions.BookNotAvailableException;
+import com.ebac.biblioteca.exceptions.UserNotFoundException;
+import com.ebac.biblioteca.mapper.AuthorMapper;
+import com.ebac.biblioteca.mapper.BookMapper;
+import com.ebac.biblioteca.mapper.UserMapper;
+import com.ebac.biblioteca.repository.AuthorRepository;
+import com.ebac.biblioteca.repository.BookRepository;
+import com.ebac.biblioteca.repository.LibraryRepository;
+import com.ebac.biblioteca.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
 
-import java.sql.SQLException;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class LibraryImpl implements Library {
 
-public class LibraryImpl implements Library{
-    private final BookDAO bookDAO;
-    private final AutorDAO autorDAO;
-    private final UserDAO userDAO;
-
-    public LibraryImpl(BookDAO bookDAO, AutorDAO autorDAO, UserDAO userDAO) {
-        this.bookDAO = bookDAO;
-        this.autorDAO = autorDAO;
-        this.userDAO = userDAO;
-    }
-
+    private final BookRepository bookRepository;
+    private final AuthorRepository authorRepository;
+    private final UserRepository userRepository;
+    private final LibraryRepository libraryRepository;
 
     @Override
-    public Book addBook(Book book) throws SQLException {
-        return bookDAO.save(book);
+    public Book addBook(Book book) {
+
+        AuthorEntity author = authorRepository.findById(book.getAuthorId())
+                .orElseThrow(() -> new RuntimeException("Autor no existe"));
+
+        LibraryEntity defaultLibrary = libraryRepository.findById(1L).orElseThrow();
+        BookEntity entity = BookMapper.toEntity(book, author, defaultLibrary);
+        return BookMapper.toDto(bookRepository.save(entity));
     }
 
     @Override
-    public Optional<Book> getBookById(int id) throws SQLException {
-        return bookDAO.findById(id);
+    public Optional<Book> getBookById(Long id) {
+        return bookRepository.findById(id)
+                .map(BookMapper::toDto);
     }
 
     @Override
-    public List<Book> searchBooks() throws SQLException {
-        return bookDAO.findAll();
+    public List<Book> searchBooks() {
+        return bookRepository.findAll()
+                .stream()
+                .map(BookMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
-    public void updateBook(Book book) throws SQLException {
-        if (bookDAO.update(book)){
-            System.out.println("Libro actualizado correctamente");
-        }else{
-            System.out.println("No se logro actualizar el libro");
+    public Book updateBook(Book book) {
+        BookEntity entity = bookRepository.findById(book.getId())
+                .orElseThrow(() -> new RuntimeException("Libro no existe"));
+
+        entity.setNombre(book.getNombre());
+        entity.setAnio(book.getAnio());
+
+        return BookMapper.toDto(bookRepository.save(entity));
+    }
+
+    @Override
+    public void deleteBook(Long id) {
+        if (!bookRepository.existsById(id)) {
+            throw new RuntimeException("Libro no existe");
         }
+        bookRepository.deleteById(id);
     }
 
     @Override
-    public void deleteBook(int id) throws SQLException {
-        if(bookDAO.delete(id)){
-            System.out.println("Libro eliminado correctamente");
-        }else{
-            System.out.println("No se pudo eliminar el libro" );
-        }
-    }
+    public Book lendBook(Long bookId, Long userId) {
 
-    @Override
-    public void lendBook(int id_libro, int id_usuario) throws SQLException {
-        Optional<Book> bq_libro = bookDAO.findById(id_libro);
-        if (bq_libro.isEmpty()){
-            throw new SQLException("El libro: " + id_libro + " no existe");
+        BookEntity book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new RuntimeException("Libro no existe"));
+
+        if (!book.isDisponible()) {
+            throw new BookNotAvailableException("Libro no disponible");
         }
-        Book book = bq_libro.get();
-        if (!book.isDisponible()){
-            throw new SQLException("El libro: " + book.getNombre_libro() + " no se encuentra disponible");
-        }
-        Optional<User> usr =  userDAO.findById(id_usuario);
-        if (usr.isEmpty()){
-            throw new SQLException("Usuario: " + id_usuario + " no existe");
-        }
-        User user = usr.get();
+
+        UserEntity user = userRepository.findById(userId)
+                .orElseThrow(()-> new UserNotFoundException("Usuario no encontrado"));
+
         book.setDisponible(false);
-        book.setId_usuario(user.getId_usuario());
-        bookDAO.update(book);
-        System.out.println("Libro prestado correctamente");
+        book.setUser(user);
+
+        return BookMapper.toDto(bookRepository.save(book));
     }
 
     @Override
-    public void returnBook(int id_libro, int id_usuario) throws SQLException {
-        Optional<Book> bookPrestado = bookDAO.findById(id_libro);
-        if (bookPrestado.isEmpty()){
-            throw new SQLException("El libro: " + id_libro + " no existe");
-        }
-        Book bookCuestion = bookPrestado.get();
+    public Book returnBook(Long bookId) {
 
-        if (bookCuestion.isDisponible()){
-            throw new SQLException("El libro: " + bookCuestion.getNombre_libro() + " no ha sido prestado");
+        BookEntity book = bookRepository.findById(bookId)
+                .orElseThrow(() -> new RuntimeException("Libro no existe"));
+
+        if (book.isDisponible()) {
+            throw new RuntimeException("El libro no está prestado");
         }
 
-        Optional<User> userCliente = userDAO.findById(id_usuario);
-        if (userCliente.isEmpty()){
-            throw new SQLException("No existe el cliente: " + id_usuario);
-        }
-        User userCuestion = userCliente.get();
-        if (bookCuestion.getId_usuario() == null ||
-                !bookCuestion.getId_usuario().equals(userCuestion.getId_usuario())){
-            throw new SQLException("El usuario: " + userCuestion.getNombre_usuario() +
-                    " no tiene prestado el libro: " + bookCuestion.getNombre_libro());
+        if (book.getUser() == null) {
+            throw new RuntimeException("El usuario no tiene este libro");
         }
 
-        bookCuestion.setDisponible(true);
-        bookCuestion.setId_usuario(null);
-        bookDAO.update(bookCuestion);
-        System.out.println("Libro devuelto correctamente");
+        book.setDisponible(true);
+        book.setUser(null);
 
+        return BookMapper.toDto(bookRepository.save(book));
+    }
+
+
+    @Override
+    public User addUser(User user) {
+        UserEntity entity = UserMapper.toEntity(user);
+        return UserMapper.toDto(userRepository.save(entity));
     }
 
     @Override
-    public User addUser(User user) throws SQLException {
-        return  userDAO.save(user);
+    public Optional<User> getUserById(Long id) {
+        return userRepository.findById(id)
+                .map(UserMapper::toDto);
     }
 
     @Override
-    public Optional<User> getUserById(int id) throws SQLException {
-        ;
-        return userDAO.findById(id);
+    public List<User> searchUsers() {
+        return userRepository.findAll()
+                .stream()
+                .map(UserMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
-    public List<User> searchUsers() throws SQLException {
-        return userDAO.findAll();
+    public User updateUser(User user) {
+        UserEntity entity = userRepository.findById(user.getId())
+                .orElseThrow(() -> new UserNotFoundException ("Usuario no encontrado"));
+
+        entity.setNombre(user.getNombre());
+        return UserMapper.toDto(userRepository.save(entity));
     }
 
     @Override
-    public void updateUser(User user) throws SQLException {
-        if(userDAO.update(user)){
-            System.out.println("Usuario actualizado exitosamente");
-        }else{
-            System.out.println("No se pudo actualizar el usuario");
+    public void deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new UserNotFoundException("Usuario no encontrado");
         }
+        userRepository.deleteById(id);
+    }
+
+
+    @Override
+    public Author addAuthor(Author author) {
+        AuthorEntity entity = AuthorMapper.toEntity(author);
+        return AuthorMapper.toDto(authorRepository.save(entity));
     }
 
     @Override
-    public void deleteUser(int id) throws SQLException {
-        if(userDAO.delete(id)){
-            System.out.println("Usuario eliminado exitosamente");
-        }else{
-            System.out.println("No se pudo eliminar al usuario");
+    public Optional<Author> getAuthorById(Long id) {
+        return authorRepository.findById(id)
+                .map(AuthorMapper::toDto);
+    }
+
+    @Override
+    public List<Author> searchAuthors() {
+        return authorRepository.findAll()
+                .stream()
+                .map(AuthorMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public Author updateAuthor(Author author) {
+        AuthorEntity entity = authorRepository.findById(author.getId())
+                .orElseThrow(() -> new RuntimeException("Autor no existe"));
+
+        entity.setNombre(author.getNombre());
+        return AuthorMapper.toDto(authorRepository.save(entity));
+    }
+
+    @Override
+    public void deleteAuthor(Long id) {
+        if (!authorRepository.existsById(id)) {
+            throw new RuntimeException("Autor no existe");
         }
-    }
-
-    @Override
-    public Autor addAutor(Autor autor) throws SQLException {
-        return autorDAO.save(autor);
-    }
-
-    @Override
-    public Optional<Autor> getAutorById(int id) throws SQLException {
-        return  autorDAO.findById(id);
-    }
-
-    @Override
-    public List<Autor> searchAutor() throws SQLException {
-
-        return  autorDAO.findAll();
-    }
-
-    @Override
-    public void updateAutor(Autor autor) throws SQLException {
-        autorDAO.update(autor);
-    }
-
-    @Override
-    public void deleteAutor(int id) throws SQLException {
-        if(autorDAO.deleteById(id)){
-            System.out.println("Autor eliminado exitosamente");
-        }else{
-            System.out.println("No se pudo eliminar al autor");
-        }
-
+        authorRepository.deleteById(id);
     }
 }

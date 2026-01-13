@@ -1,13 +1,13 @@
 package com.ebac.biblioteca.dto;
 
-public class User {
+public class Library {
     private Long id;
     private String nombre;
 
-    public User() {
+    public Library() {
     }
 
-    public User(Long id, String nombre) {
+    public Library(Long id, String nombre) {
         this.id = id;
         this.nombre = nombre;
     }
@@ -30,7 +30,7 @@ public class User {
 
     @Override
     public String toString() {
-        return "User{" +
+        return "Library{" +
                 "id=" + id +
                 ", nombre='" + nombre + '\'' +
                 '}';
