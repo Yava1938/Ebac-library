@@ -1,13 +1,13 @@
 package com.ebac.biblioteca.dto;
 
-public class User {
+public class Author {
     private Long id;
     private String nombre;
 
-    public User() {
+    public Author() {
     }
 
-    public User(Long id, String nombre) {
+    public Author(Long id, String nombre) {
         this.id = id;
         this.nombre = nombre;
     }
@@ -30,7 +30,7 @@ public class User {
 
     @Override
     public String toString() {
-        return "User{" +
+        return "Author{" +
                 "id=" + id +
                 ", nombre='" + nombre + '\'' +
                 '}';
